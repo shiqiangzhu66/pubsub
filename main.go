@@ -5,18 +5,19 @@ import (
 )
 
 func main() {
-	s1 := NewSubscriber(1)
-	s2 := NewSubscriber(2)
+	s1 := NewSubscriber("s1")
+	s2 := NewSubscriber("s2")
+	s3 := NewSubscriber("s3")
 
-	p := NewPublisher()
-	go p.start()
+	p := NewPublisher(s1, s2, s3)
 
-	p.AddSubscriberCh() <- s1
-	p.AddSubscriberCh() <- s2
+	// p.AddSubscriberCh() <- s1
+	// p.AddSubscriberCh() <- s2
+	// p.AddSubscriberCh() <- s3
 
 	p.PublishingCh() <- "hello"
 
-	p.RemoveSubscriberCh() <- s1
+	p.RemoveSubscriberCh() <- s2
 	p.PublishingCh() <- "word"
 
 	time.Sleep(1 * time.Second)

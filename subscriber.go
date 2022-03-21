@@ -5,18 +5,66 @@ import (
 	"time"
 )
 
+// Subscriber
 type Subscriber interface {
 	Notify(msg interface{}) error
 	Close()
 }
 
-// implement
-type subscriber struct {
-	in chan interface{}
-	id int
+// Handler
+type Handler interface {
+	Handle(msg interface{})
 }
 
-func (s *subscriber) Notify(msg interface{}) (err error) {
+// HandlerFunc
+//  @param msg
+type HandlerFunc func(msg interface{})
+
+// Handle
+//  @receiver handler
+//  @param msg
+func (handler HandlerFunc) Handle(msg interface{}) {
+	handler(msg)
+}
+
+//
+// implement subscriber
+//
+
+// InMemorySubscriber
+type InMemorySubscriber struct {
+	in      chan interface{}
+	name    string
+	handler Handler
+}
+
+// SubscriberOption
+//  @param s
+type SubscriberOption func(s *InMemorySubscriber)
+
+// WithSubscriberHandler
+//  @param handler
+//  @return SubscriberOption
+func WithSubscriberHandler(handler Handler) SubscriberOption {
+	return func(s *InMemorySubscriber) {
+		s.handler = handler
+	}
+}
+
+// WithSubscriberHandlerFunc
+//  @param handler
+//  @return SubscriberOption
+func WithSubscriberHandlerFunc(handler func(msg interface{})) SubscriberOption {
+	return func(s *InMemorySubscriber) {
+		s.handler = HandlerFunc(handler)
+	}
+}
+
+// Notify
+//  @receiver s
+//  @param msg
+//  @return err
+func (s *InMemorySubscriber) Notify(msg interface{}) (err error) {
 	defer func() {
 		if rec := recover(); rec != nil {
 			err = fmt.Errorf("%#v", rec)
@@ -25,26 +73,37 @@ func (s *subscriber) Notify(msg interface{}) (err error) {
 
 	select {
 	case s.in <- msg:
-	case <-time.After(time.Second):
+	case <-time.After(1 * time.Second):
 		err = fmt.Errorf("timeout")
 	}
 
 	return
 }
 
-func (s *subscriber) Close() {
+// Close
+//  @receiver s
+func (s *InMemorySubscriber) Close() {
 	close(s.in)
 }
 
-func NewSubscriber(id int) Subscriber {
-	s := &subscriber{
-		id: id,
-		in: make(chan interface{}),
+// NewSubscriber
+//  @param id
+//  @return Subscriber
+func NewSubscriber(name string, opts ...SubscriberOption) Subscriber {
+	s := &InMemorySubscriber{
+		name:    name,
+		in:      make(chan interface{}, 4),
+		handler: HandlerFunc(func(msg interface{}) {}),
+	}
+
+	for _, opt := range opts {
+		opt(s)
 	}
 
 	go func() {
 		for msg := range s.in {
-			fmt.Printf("(W%d): %v\n", s.id, msg)
+			fmt.Printf("(subscriber-%v): %v\n", s.name, msg)
+			s.handler.Handle(msg)
 		}
 	}()
 

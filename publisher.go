@@ -1,15 +1,14 @@
 package main
 
 type Publisher interface {
-	start()
 	AddSubscriberCh() chan<- Subscriber
 	RemoveSubscriberCh() chan<- Subscriber
 	PublishingCh() chan<- interface{}
 	Stop()
 }
 
-// publisher
-type publisher struct {
+// InMemoryPublisher
+type InMemoryPublisher struct {
 	subscribers []Subscriber
 	addSubCh    chan Subscriber
 	removeSubCh chan Subscriber
@@ -17,21 +16,36 @@ type publisher struct {
 	stop        chan struct{}
 }
 
-func (p *publisher) AddSubscriberCh() chan<- Subscriber {
+// AddSubscriberCh
+//  @receiver p
+//  @return chan
+func (p *InMemoryPublisher) AddSubscriberCh() chan<- Subscriber {
 	return p.addSubCh
 }
-func (p *publisher) RemoveSubscriberCh() chan<- Subscriber {
+
+// RemoveSubscriberCh
+//  @receiver p
+//  @return chan c
+func (p *InMemoryPublisher) RemoveSubscriberCh() chan<- Subscriber {
 	return p.removeSubCh
 }
-func (p *publisher) PublishingCh() chan<- interface{} {
+
+// PublishingCh
+//  @receiver p
+//  @return chan
+func (p *InMemoryPublisher) PublishingCh() chan<- interface{} {
 	return p.in
 }
 
-func (p *publisher) Stop() {
+// Stop
+//  @receiver p
+func (p *InMemoryPublisher) Stop() {
 	close(p.stop)
 }
 
-func (p *publisher) start() {
+// start
+//  @receiver p
+func (p *InMemoryPublisher) start() {
 	for {
 		select {
 		case msg := <-p.in:
@@ -44,12 +58,15 @@ func (p *publisher) start() {
 
 		case sub := <-p.removeSubCh:
 			for i, candidate := range p.subscribers {
-				if candidate == sub {
-					p.subscribers = append(p.subscribers[:i], p.subscribers[i+1:]...)
-					candidate.Close()
-					break
+				if candidate != sub {
+					continue
 				}
+
+				p.subscribers = append(p.subscribers[:i], p.subscribers[i+1:]...)
+				candidate.Close()
+				break
 			}
+
 		case <-p.stop:
 			for _, sub := range p.subscribers {
 				sub.Close()
@@ -63,11 +80,21 @@ func (p *publisher) start() {
 	}
 }
 
-func NewPublisher() Publisher {
-	return &publisher{
+// NewPublisher
+//  @return Publisher
+func NewPublisher(subs ...Subscriber) Publisher {
+	p := &InMemoryPublisher{
 		addSubCh:    make(chan Subscriber),
 		removeSubCh: make(chan Subscriber),
 		in:          make(chan interface{}),
 		stop:        make(chan struct{}),
 	}
+
+	go p.start()
+
+	for _, sub := range subs {
+		p.addSubCh <- sub
+	}
+
+	return p
 }
